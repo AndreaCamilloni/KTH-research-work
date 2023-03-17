@@ -48,8 +48,9 @@ def calculate_slice_bboxes(
     img,
     slice_height: int = 512,
     slice_width: int = 512,
-    overlap_height_ratio: float = 0.2,
-    overlap_width_ratio: float = 0.2):
+    #overlap_height_ratio: float = 0.2,
+    #overlap_width_ratio: float = 0.2
+    TEST = False):
     """
     Given the height and width of an image, calculates how to divide the image into
     overlapping slices according to the height and width provided. These slices are returned
@@ -59,6 +60,7 @@ def calculate_slice_bboxes(
     :param slice_width: Width of each slice
     :param overlap_height_ratio: [DEPRECATED] Fractional overlap in height of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
     :param overlap_width_ratio: [DEPRECATED] Fractional overlap in width of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
+    :param TEST: if True, the overlapping is 0
     :return: a list of patches in xyxy format
     """
 
@@ -78,8 +80,15 @@ def calculate_slice_bboxes(
     image_width = img.shape[1] # 2000
 
     # calculate automatically the overlapping necessary to have the same size of patches
-    y_overlap = int((image_height % slice_height) / (image_height / slice_height))
-    x_overlap = int((image_width % slice_width) / (image_width / slice_width))
+    x_overlap = 0 if TEST else int((image_width % slice_width) / (image_width / slice_width))
+    y_overlap = 0 if TEST else int((image_height % slice_height) / (image_height / slice_height))
+
+    # if TEST add white pixels to make sure all patches have the same size
+    if TEST:
+        img = cv2.copyMakeBorder(img, 0, slice_height - img.shape[0] % slice_height - x_overlap, 0, slice_width - img.shape[1] % slice_width-y_overlap, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+    #y_overlap = int((image_height % slice_height) / (image_height / slice_height))
+    #x_overlap = int((image_width % slice_width) / (image_width / slice_width))
 
     # TODO: if the patches are for testing, the overlapping should be 0
 
@@ -137,16 +146,16 @@ def convert_coordinates_to_original(df_slice, slice):
     return df_slice
 
 # Given an image create the patches and the corresponding .txt files and return a daframe with the information (Original image sizes, patch sizes, patch coordinates, patch id)
-def create_patches(img_filename, images_path, df, destination, class_to_num, slice_size=512, overlapping=0.2):
+def create_patches(img_filename, images_path, df, destination, class_to_num, slice_size=512, TEST=False):
     df = df[df.filename == img_filename]
     # Read the image
     img = cv2.imread(os.path.join(images_path, img_filename))
     # Calculate the slices
     #slices = calculate_slice_bboxes(img.shape[0], img.shape[1], slice_size, slice_size, overlapping, overlapping)
-    slices = calculate_slice_bboxes(img, slice_size, slice_size, overlapping, overlapping)
+    slices = calculate_slice_bboxes(img, slice_size, slice_size, TEST = TEST)
 
     # dataframe to store the information of the slices
-    image_info = pd.DataFrame(columns=['name', 'filename',  'xmin', 'ymin', 'xmax', 'ymax', 'slice','path', 'W', 'H','Overlapping'])
+    image_info = pd.DataFrame(columns=['name', 'filename',  'xmin', 'ymin', 'xmax', 'ymax', 'slice','path', 'W', 'H'])
    
 
     for i, slice in enumerate(slices):
@@ -181,7 +190,7 @@ def create_patches(img_filename, images_path, df, destination, class_to_num, sli
         # Save the image
         cv2.imwrite(f'{destination}/images/{name}_{i}.tif', img_slice)
         # Store the information of the patch
-        image_info = image_info.append({'name':img_filename ,'filename': f'{name}_{i}.tif', 'xmin': slice[0], 'ymin': slice[1], 'xmax': slice[2], 'ymax': slice[3], 'slice':slice_size, 'path': str(destination), 'W': original_img_width, 'H': original_img_height, 'Overlapping': overlapping}, ignore_index=True)
+        image_info = image_info.append({'name':img_filename ,'filename': f'{name}_{i}.tif', 'xmin': slice[0], 'ymin': slice[1], 'xmax': slice[2], 'ymax': slice[3], 'slice':slice_size, 'path': str(destination), 'W': original_img_width, 'H': original_img_height}, ignore_index=True)
 
 
     return image_info
@@ -198,11 +207,11 @@ def yolo_format(df, class_to_num):
 
     
 class DataProcessor:
-    def __init__(self, source, destination, slice_size=512, overlapping=0.2, slicing=False, val_split=0.2, train_imgs=[], val_imgs=[], test_imgs=[]):
+    def __init__(self, source, destination, slice_size=512,  slicing=False, val_split=0.2, train_imgs=[], val_imgs=[], test_imgs=[]):
         self.source = source
         self.destination = destination
         self.slice_size = slice_size
-        self.overlapping = overlapping
+        #self.overlapping = overlapping
         self.slicing = slicing
 
         self.annotations = os.path.join(self.source, 'annotations')
@@ -329,14 +338,14 @@ class DataProcessor:
             #img_path = os.path.join(self.images_path, img_name)
             try:
                 #create_patches(img_name, self.images_path, self.data, self.train_path, self.class_to_num, self.slice_size, self.overlapping)
-                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.train_path, self.class_to_num, self.slice_size, self.overlapping), self.patches_info], ignore_index=True)
+                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.train_path, self.class_to_num, self.slice_size), self.patches_info], ignore_index=True)
             except:
                 print(f'Error in creating patches for training image {img_name}')
                 continue
         for img in self.val_imgs:
             img_name = img + '.tif'
             try:
-                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.val_path, self.class_to_num, self.slice_size, self.overlapping), self.patches_info], ignore_index=True)
+                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.val_path, self.class_to_num, self.slice_size), self.patches_info], ignore_index=True)
                 #create_patches(img_name, self.images_path, self.data, self.val_path, self.class_to_num, self.slice_size, self.overlapping)
             except:
                 print(f'Error in creating patches for validation image {img_name}')
@@ -345,7 +354,7 @@ class DataProcessor:
         for img in self.test_imgs:
             img_name = img + '.tif'
             try:
-                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.test_path, self.class_to_num, self.slice_size, self.overlapping), self.patches_info], ignore_index=True)
+                self.patches_info = pd.concat([create_patches(img_name, self.images_path, self.data, self.test_path, self.class_to_num, self.slice_size,TEST = True), self.patches_info], ignore_index=True)
                 #create_patches(img_name, self.images_path, self.data, self.test_path, self.class_to_num, self.slice_size, self.overlapping)
             except:
                 print(f'Error in creating patches for test image {img_name}')
@@ -453,8 +462,8 @@ if __name__ == "__main__":
                            help='the size of the patches',
                            default=512)
     my_parser.add_argument('--overlapping',
-                           type=int,
-                           help='the overlapping percentage between patches',
+                          type=int,
+                           help='[DEPRECATED]the overlapping percentage between patches',
                            default=0.2)
     my_parser.add_argument('--slicing',
                            action='store_true',
@@ -462,7 +471,7 @@ if __name__ == "__main__":
                            default=False)
     my_parser.add_argument('--val-split',
                            type=int,
-                           help='Validation split to generate',
+                           help='[DEPRECATED]Validation split to generate',
                            default=0.2)
     my_parser.add_argument('--train-imgs', nargs='+', type=str, help='Specify here the tiles you want to use for training e.g.Format: P9 P20 N10', default=[])
     my_parser.add_argument('--val-imgs', nargs='+', type=str, help='Specify here the tiles you want to use for validation e.g.Format: P9 P20 N10', default=[])
@@ -475,7 +484,7 @@ if __name__ == "__main__":
     path = args.path
     destination = args.destination
     slice_size = args.slice_size
-    overlapping = args.overlapping
+    #overlapping = args.overlapping
     slicing = args.slicing
     val_split = args.val_split
     train_imgs = args.train_imgs
@@ -483,7 +492,7 @@ if __name__ == "__main__":
     test_imgs = args.test_imgs
     
     # Create the dataset object
-    dataset = DataProcessor(path, destination, slice_size, overlapping, slicing, val_split, train_imgs, val_imgs, test_imgs)
+    dataset = DataProcessor(path, destination, slice_size, slicing, val_split, train_imgs, val_imgs, test_imgs)
 
     dataset.populate_train_val_test()
 
