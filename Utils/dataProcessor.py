@@ -57,21 +57,32 @@ def calculate_slice_bboxes(
     :param img: image to be sliced
     :param slice_height: Height of each slice
     :param slice_width: Width of each slice
-    :param overlap_height_ratio: Fractional overlap in height of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
-    :param overlap_width_ratio: Fractional overlap in width of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
+    :param overlap_height_ratio: [DEPRECATED] Fractional overlap in height of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
+    :param overlap_width_ratio: [DEPRECATED] Fractional overlap in width of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
     :return: a list of patches in xyxy format
     """
 
     slice_bboxes = []
     y_max = y_min = 0
-    y_overlap = int(overlap_height_ratio * slice_height)
-    x_overlap = int(overlap_width_ratio * slice_width)
+    #y_overlap = int(overlap_height_ratio * slice_height)
+    #x_overlap = int(overlap_width_ratio * slice_width)
 
     # Add white pixels to make sure all patches have the same size and overlaps equally --> NEW FEATURE
-    img = cv2.copyMakeBorder(img, 0, slice_height - img.shape[0] % slice_height - x_overlap, 0, slice_width - img.shape[1] % slice_width-y_overlap, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+    #img = cv2.copyMakeBorder(img, 0, slice_height - img.shape[0] % slice_height - x_overlap, 0, slice_width - img.shape[1] % slice_width-y_overlap, cv2.BORDER_CONSTANT, value=[255, 255, 255])
 
-    image_height = img.shape[0]
-    image_width = img.shape[1]
+    # Add white pixels if image shape is less than 2000x2000
+    if img.shape[0] < 2000 or img.shape[1] < 2000:
+        img = cv2.copyMakeBorder(img, 0, 2000 - img.shape[0], 0, 2000 - img.shape[1], cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+    image_height = img.shape[0] # 2000
+    image_width = img.shape[1] # 2000
+
+    # calculate automatically the overlapping necessary to have the same size of patches
+    y_overlap = int((image_height % slice_height) / (image_height / slice_height))
+    x_overlap = int((image_width % slice_width) / (image_width / slice_width))
+
+    # TODO: if the patches are for testing, the overlapping should be 0
+
 
     while y_max < image_height:
         x_min = x_max = 0
@@ -205,7 +216,7 @@ class DataProcessor:
             print(f'Folder {self.destination} already exists')
             i += 1
         print(f'Creating folder {self.destination}...')
-        print(os.path.exists(self.destination))
+        #print(os.path.exists(self.destination))
         os.mkdir(self.destination)
 
         self.images_path_out = os.path.join(self.destination, 'images')
