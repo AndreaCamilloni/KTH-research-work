@@ -43,8 +43,9 @@ def xml_to_df(path):
 
 
 def calculate_slice_bboxes(
-    image_height: int,
-    image_width: int,
+    #image_height: int,
+    #image_width: int,
+    img,
     slice_height: int = 512,
     slice_width: int = 512,
     overlap_height_ratio: float = 0.2,
@@ -53,8 +54,7 @@ def calculate_slice_bboxes(
     Given the height and width of an image, calculates how to divide the image into
     overlapping slices according to the height and width provided. These slices are returned
     as patches in xyxy format.
-    :param image_height: Height of the original image.
-    :param image_width: Width of the original image.
+    :param img: image to be sliced
     :param slice_height: Height of each slice
     :param slice_width: Width of each slice
     :param overlap_height_ratio: Fractional overlap in height of each slice (e.g. an overlap of 0.2 for a slice of size 100 yields an overlap of 20 pixels)
@@ -66,6 +66,13 @@ def calculate_slice_bboxes(
     y_max = y_min = 0
     y_overlap = int(overlap_height_ratio * slice_height)
     x_overlap = int(overlap_width_ratio * slice_width)
+
+    # Add white pixels to make sure all patches have the same size and overlaps equally --> NEW FEATURE
+    img = cv2.copyMakeBorder(img, 0, slice_height - img.shape[0] % slice_height - x_overlap, 0, slice_width - img.shape[1] % slice_width-y_overlap, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+    image_height = img.shape[0]
+    image_width = img.shape[1]
+
     while y_max < image_height:
         x_min = x_max = 0
         y_max = y_min + slice_height
@@ -124,7 +131,8 @@ def create_patches(img_filename, images_path, df, destination, class_to_num, sli
     # Read the image
     img = cv2.imread(os.path.join(images_path, img_filename))
     # Calculate the slices
-    slices = calculate_slice_bboxes(img.shape[0], img.shape[1], slice_size, slice_size, overlapping, overlapping)
+    #slices = calculate_slice_bboxes(img.shape[0], img.shape[1], slice_size, slice_size, overlapping, overlapping)
+    slices = calculate_slice_bboxes(img, slice_size, slice_size, overlapping, overlapping)
 
     # dataframe to store the information of the slices
     image_info = pd.DataFrame(columns=['name', 'filename',  'xmin', 'ymin', 'xmax', 'ymax', 'slice','path', 'W', 'H','Overlapping'])
@@ -197,6 +205,7 @@ class DataProcessor:
             print(f'Folder {self.destination} already exists')
             i += 1
         print(f'Creating folder {self.destination}...')
+        print(os.path.exists(self.destination))
         os.mkdir(self.destination)
 
         self.images_path_out = os.path.join(self.destination, 'images')
