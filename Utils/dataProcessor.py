@@ -91,7 +91,8 @@ def calculate_slice_bboxes(
     #x_overlap = int((image_width % slice_width) / (image_width / slice_width))
 
     # TODO: if the patches are for testing, the overlapping should be 0
-
+    image_height = img.shape[0] # compute new size if TEST
+    image_width = img.shape[1] # compute new size if TEST
 
     while y_max < image_height:
         x_min = x_max = 0
@@ -150,15 +151,24 @@ def create_patches(img_filename, images_path, df, destination, class_to_num, sli
     df = df[df.filename == img_filename]
     # Read the image
     img = cv2.imread(os.path.join(images_path, img_filename))
+
+    # Fill the image with white pixels if it is smaller than 2000x2000
+    if img.shape[0] < 2000 or img.shape[1] < 2000:
+        img = cv2.copyMakeBorder(img, 0, 2000 - img.shape[0], 0, 2000 - img.shape[1], cv2.BORDER_CONSTANT, value=[255, 255, 255])
+    # Fill the image with white pixels if test and the size is not a multiple of the slice size
+    if TEST and (img.shape[0] % slice_size != 0 or img.shape[1] % slice_size != 0):
+        img = cv2.copyMakeBorder(img, 0, slice_size - img.shape[0] % slice_size, 0, slice_size - img.shape[1] % slice_size, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+    
     # Calculate the slices
     #slices = calculate_slice_bboxes(img.shape[0], img.shape[1], slice_size, slice_size, overlapping, overlapping)
     slices = calculate_slice_bboxes(img, slice_size, slice_size, TEST = TEST)
 
     # dataframe to store the information of the slices
     image_info = pd.DataFrame(columns=['name', 'filename',  'xmin', 'ymin', 'xmax', 'ymax', 'slice','path', 'W', 'H'])
-   
 
     for i, slice in enumerate(slices):
+        
+
         # Crop the image
         img_slice = img[slice[1]:slice[3], slice[0]:slice[2]]
         # Get the dataframe of the patch
