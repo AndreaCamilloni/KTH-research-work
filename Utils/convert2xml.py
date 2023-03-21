@@ -108,9 +108,11 @@ class XMLannotations:
         # Read yaml file
         with open(self.data_yaml) as file:
             self.yaml_doc = yaml.full_load(file)
-            self.data_folder = self.yaml_doc['train'].split('/')[0]
+            self.data_folder = self.yaml_doc['train'].split('train')[0]
             self.class_names = self.yaml_doc['names']
             
+        print(self.data_folder)
+        
         # Read patches_info.csv
         self.patches_info = pd.read_csv(os.path.join(self.data_folder, 'patches_info.csv'))
 
@@ -123,8 +125,6 @@ class XMLannotations:
         # Convert all the labels to xml
         self.__transform_to_xml__()
 
-        # Save the xml annotations in the folder self.output/self.exp_name/xml_annotations
-        self.__save_xml__()
 
 
     def __transform_to_xml__(self):
@@ -138,7 +138,9 @@ class XMLannotations:
     def __get_all_labels__(self):
         # Read all the labels in self.path/self.exp_name/test/labels
         # Filter out train and val labels from patches_info.csv
-        self.patches_info = self.patches_info[self.patches_info['path'].split('\\')[0] =='test']
+        folder = self.patches_info['path'].unique()[0].split('\\')[0]
+
+        self.patches_info = self.patches_info[self.patches_info['path'] == folder + '\\test']
         #labels_df = labels_df[labels_df['path'] == 'new_data_processed_1\\test'] #TODO
         
         images_name = self.patches_info['name'].unique()
@@ -166,20 +168,19 @@ class XMLannotations:
 
 if __name__ == "__main__":
     # Create the parser
-    #my_parser = argparse.ArgumentParser(description='Converts YOLO annotations to XML')
-    #my_parser.add_argument('Path', metavar='--path', type=str, help='the path to the folder containing the YOLO annotations', default='../yolov5/runs/')
-    #my_parser.add_argument('Experiment Name', metavar='--exp-name', type=str, help='the name of the experiment', default='exp')
-    #my_parser.add_argument('Output', metavar='--output', type=str, help='the path to the folder where the XML annotations will be saved', default='../PredictedLabels/')
-    #my_parser.add_argument('Data yaml', metavar='--data-yaml', type=str, help='the path to the data.yaml file', default='../yolov5/data/data.yaml')
+    my_parser = argparse.ArgumentParser(description='Converts YOLO annotations to XML')
+    my_parser.add_argument('Path', metavar='--path', type=str, help='the path to the folder containing the YOLO annotations', default='../yolov5/runs/')
+    my_parser.add_argument('Experiment Name', metavar='--exp-name', type=str, help='the name of the experiment', default='exp')
+    my_parser.add_argument('Output', metavar='--output', type=str, help='the path to the folder where the XML annotations will be saved', default='../PredictedLabels/')
+    my_parser.add_argument('Data yaml', metavar='--data-yaml', type=str, help='the path to the data.yaml file', default='../yolov5/data/data.yaml')
     # Execute the parse_args() method/
-    #args = my_parser.parse_args()
-    #print(args)
+    args = my_parser.parse_args()
+    print(args)
 
-    path = '../new_data_processed_1/'
-    exp_name = 'exp'
-    output = './new_data_processed_1/'
-    data_yaml = 'data.yaml'
-
+    path = args.path
+    exp_name = args.exp_name
+    output = args.output
+    data_yaml = args.data_yaml 
     #path = '../new_data_processed_1/'
     
     #initiate the class
