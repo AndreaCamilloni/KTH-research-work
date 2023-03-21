@@ -10,3 +10,5 @@ How to use it (EXAMPLE):
 ## Convert2XML
 
 Class used to restore XML annotations from YOLO predicted labels.
+
+        python convert2xml.py 
