@@ -87,6 +87,15 @@ class QFocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
+# NEW: weighting factor
+class WeightedMultilabel(torch.nn.Module):
+    def __init__(self, pos_weight, weights):
+        self.loss = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        self.weights = weights.unsqueeze()        
+
+    def forward(self, outputs, targets):
+        return self.loss(outputs, targets) * self.weights
+    
 
 class ComputeLoss:
     sort_obj_iou = False
@@ -98,8 +107,10 @@ class ComputeLoss:
 
         # Define criteria
         if weighted_loss:
-            BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), weight=model.class_weights)
-            BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), weight=model.class_weights)
+            BCEcls = WeightedMultilabel(pos_weight=torch.tensor([h['cls_pw']], device=device), weights=model.class_weights)
+            BCEobj = WeightedMultilabel(pos_weight=torch.tensor([h['obj_pw']], device=device), weights=model.class_weights)
+            #BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), weight=model.class_weights)
+            #BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), weight=model.class_weights)
         else: 
             BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))  
             BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))  
