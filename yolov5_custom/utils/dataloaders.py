@@ -26,6 +26,7 @@ import torchvision
 import yaml
 from PIL import ExifTags, Image, ImageOps
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
+from torch.utils.data.sampler import WeightedRandomSampler
 from tqdm import tqdm
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
@@ -52,7 +53,7 @@ for orientation in ExifTags.TAGS.keys():
 def get_hash(paths):
     # Returns a single hash value of a list of paths (files or dirs)
     size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))  # sizes
-    h = hashlib.sha256(str(size).encode())  # hash sizes
+    h = hashlib.md5(str(size).encode())  # hash sizes
     h.update(''.join(paths).encode())  # hash paths
     return h.hexdigest()  # return hash
 
@@ -89,7 +90,7 @@ def exif_transpose(image):
         if method is not None:
             image = image.transpose(method)
             del exif[0x0112]
-            image.info['exif'] = exif.tobytes()
+            image.info["exif"] = exif.tobytes()
     return image
 
 
@@ -98,6 +99,47 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2 ** 32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+
+def create_weighted_sampler(dataset):
+    labels_per_class = [label[:, 0].tolist() for label in dataset.labels if label.shape[0] > 0]
+    # flatten 2d array into 1d: https://stackoverflow.com/questions/29244286/how-to-flatten-a-2d-list-to-1d-without-using-numpy
+    labels_per_class = [j for sub in labels_per_class for j in sub]
+
+    labels_per_class = np.array(labels_per_class)
+
+    background_count = len([1 for label in dataset.labels if label.shape[0] == 0])
+
+    unique_classes, counts = np.unique(labels_per_class, return_counts=True)
+
+    # = counts / (np.sum(counts) + background_count)
+    # normalized_background = background_count / (np.sum(counts) + background_count)
+
+    weight_cls = 1 / counts
+
+    # create a dictionary for the weight of each class
+    weight_dict = {}
+    for _cls, weight in zip(unique_classes, weight_cls):
+        weight_dict[_cls] = weight
+
+    weight_background = 1 / background_count if background_count > 0 else 0
+
+    final_weights = []
+    for label in dataset.labels:
+        if label.shape[0] == 0:
+            final_weights.append(weight_background)
+        else:
+            # use weighted sum of labels for weight in case there are multiple labels for the same image
+            label_classes = np.unique(label[:, 0]).tolist()
+            values = []
+            for cls_ in label_classes:
+                values.append(weight_dict[_cls])
+
+            final_weights.append(sum(values) / len(values))
+
+    final_weights = np.array(final_weights)
+    # you can set the num_samples argument to anything. It basically changes your iteration count in every epoch
+    return WeightedRandomSampler(weights=torch.from_numpy(final_weights), num_samples=len(final_weights))
 
 
 def create_dataloader(path,
@@ -116,8 +158,9 @@ def create_dataloader(path,
                       quad=False,
                       prefix='',
                       shuffle=False,
-                      seed=0,
-                      weighted_sampler=False,):
+                      training = False,
+                      seed = 0,
+                      weighted_sampler=False):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -139,36 +182,14 @@ def create_dataloader(path,
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
-    
-    # NEW CODE --------------------- start here ----------------------------------------------------
-    # compute the weights for each class
-    class_weights = np.zeros(4)
-    for labels in dataset.labels:
-        for lb in labels:
-            class_weights[int(lb[0])] += 1
 
-    filtered=len(list(filter(lambda item: item.shape[0]>0, dataset.labels)))
+    sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
 
-    percent = filtered / len(dataset.labels)
+    if training and weighted_sampler:
+        # weighted sampler should not be called on validation as this will report wrong results
+        assert rank == -1, "Currently multi-GPU Support is not enabled when using weighted sampler"
+        sampler = create_weighted_sampler(dataset)
 
-    # percent is 0.01 in my case
-
-    weights = [percent if item.shape[0]==0 else 1-percent for item in dataset.labels]
-
-    weights = np.array(weights)
-    
-    if weighted_sampler:
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(torch.from_numpy(weights),len(weights))
-    else:
-        sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
- 
-    #sampler=WeightedRandomSampler(torch.from_numpy(weights),len(weights))
-
-
-
-    
-        
-    # NEW CODE --------------------- end here ----------------------------------------------------
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + seed + RANK)
@@ -242,11 +263,11 @@ class LoadScreenshots:
 
         # Parse monitor shape
         monitor = self.sct.monitors[self.screen]
-        self.top = monitor['top'] if top is None else (monitor['top'] + top)
-        self.left = monitor['left'] if left is None else (monitor['left'] + left)
-        self.width = width or monitor['width']
-        self.height = height or monitor['height']
-        self.monitor = {'left': self.left, 'top': self.top, 'width': self.width, 'height': self.height}
+        self.top = monitor["top"] if top is None else (monitor["top"] + top)
+        self.left = monitor["left"] if left is None else (monitor["left"] + left)
+        self.width = width or monitor["width"]
+        self.height = height or monitor["height"]
+        self.monitor = {"left": self.left, "top": self.top, "width": self.width, "height": self.height}
 
     def __iter__(self):
         return self
@@ -254,7 +275,7 @@ class LoadScreenshots:
     def __next__(self):
         # mss screen capture: get raw pixels from the screen as np array
         im0 = np.array(self.sct.grab(self.monitor))[:, :, :3]  # [:, :, :3] BGRA to BGR
-        s = f'screen {self.screen} (LTWH): {self.left},{self.top},{self.width},{self.height}: '
+        s = f"screen {self.screen} (LTWH): {self.left},{self.top},{self.width},{self.height}: "
 
         if self.transforms:
             im = self.transforms(im0)  # transforms
@@ -269,7 +290,7 @@ class LoadScreenshots:
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
     def __init__(self, path, img_size=640, stride=32, auto=True, transforms=None, vid_stride=1):
-        if isinstance(path, str) and Path(path).suffix == '.txt':  # *.txt file with img/vid/dir on each line
+        if isinstance(path, str) and Path(path).suffix == ".txt":  # *.txt file with img/vid/dir on each line
             path = Path(path).read_text().rsplit()
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
@@ -388,7 +409,7 @@ class LoadStreams:
                 # YouTube format i.e. 'https://www.youtube.com/watch?v=Zgi9g1ksQHc' or 'https://youtu.be/Zgi9g1ksQHc'
                 check_requirements(('pafy', 'youtube_dl==2020.12.2'))
                 import pafy
-                s = pafy.new(s).getbest(preftype='mp4').url  # YouTube URL
+                s = pafy.new(s).getbest(preftype="mp4").url  # YouTube URL
             s = eval(s) if s.isnumeric() else s  # i.e. s = '0' local webcam
             if s == 0:
                 assert not is_colab(), '--source 0 webcam unsupported on Colab. Rerun command in a local environment.'
@@ -403,7 +424,7 @@ class LoadStreams:
 
             _, self.imgs[i] = cap.read()  # guarantee first frame
             self.threads[i] = Thread(target=self.update, args=([i, cap, s]), daemon=True)
-            LOGGER.info(f'{st} Success ({self.frames[i]} frames {w}x{h} at {self.fps[i]:.2f} FPS)')
+            LOGGER.info(f"{st} Success ({self.frames[i]} frames {w}x{h} at {self.fps[i]:.2f} FPS)")
             self.threads[i].start()
         LOGGER.info('')  # newline
 
@@ -525,7 +546,7 @@ class LoadImagesAndLabels(Dataset):
         # Display cache
         nf, nm, ne, nc, n = cache.pop('results')  # found, missing, empty, corrupt, total
         if exists and LOCAL_RANK in {-1, 0}:
-            d = f'Scanning {cache_path}... {nf} images, {nm + ne} backgrounds, {nc} corrupt'
+            d = f"Scanning {cache_path}... {nf} images, {nm + ne} backgrounds, {nc} corrupt"
             tqdm(None, desc=prefix + d, total=n, initial=n, bar_format=TQDM_BAR_FORMAT)  # display cache results
             if cache['msgs']:
                 LOGGER.info('\n'.join(cache['msgs']))  # display warnings
@@ -628,8 +649,8 @@ class LoadImagesAndLabels(Dataset):
         mem = psutil.virtual_memory()
         cache = mem_required * (1 + safety_margin) < mem.available  # to cache or not to cache, that is the question
         if not cache:
-            LOGGER.info(f'{prefix}{mem_required / gb:.1f}GB RAM required, '
-                        f'{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, '
+            LOGGER.info(f"{prefix}{mem_required / gb:.1f}GB RAM required, "
+                        f"{mem.available / gb:.1f}/{mem.total / gb:.1f}GB available, "
                         f"{'caching images ✅' if cache else 'not caching images ⚠️'}")
         return cache
 
@@ -637,7 +658,7 @@ class LoadImagesAndLabels(Dataset):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
         nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # number missing, found, empty, corrupt, messages
-        desc = f'{prefix}Scanning {path.parent / path.stem}...'
+        desc = f"{prefix}Scanning {path.parent / path.stem}..."
         with Pool(NUM_THREADS) as pool:
             pbar = tqdm(pool.imap(verify_image_label, zip(self.im_files, self.label_files, repeat(prefix))),
                         desc=desc,
@@ -652,7 +673,7 @@ class LoadImagesAndLabels(Dataset):
                     x[im_file] = [lb, shape, segments]
                 if msg:
                     msgs.append(msg)
-                pbar.desc = f'{desc} {nf} images, {nm + ne} backgrounds, {nc} corrupt'
+                pbar.desc = f"{desc} {nf} images, {nm + ne} backgrounds, {nc} corrupt"
 
         pbar.close()
         if msgs:
@@ -767,7 +788,7 @@ class LoadImagesAndLabels(Dataset):
             r = self.img_size / max(h0, w0)  # ratio
             if r != 1:  # if sizes are not equal
                 interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
-                im = cv2.resize(im, (math.ceil(w0 * r), math.ceil(h0 * r)), interpolation=interp)
+                im = cv2.resize(im, (int(w0 * r), int(h0 * r)), interpolation=interp)
             return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
         return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
 
@@ -944,14 +965,6 @@ class LoadImagesAndLabels(Dataset):
             lb[:, 0] = i  # add target image index for build_targets()
 
         return torch.stack(im4, 0), torch.cat(label4, 0), path4, shapes4
-    
-    # get labels weights
-    def get_labels_weights(self):
-        self.classes = self.labels[:, 0].astype(np.int32)
-        labels_weights = np.zeros(4)
-        for i in range(4):
-            labels_weights[i] = 1 / (self.labels_count[i] ** 0.5)
-        return labels_weights
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
@@ -1101,7 +1114,7 @@ class HUBDatasetStats():
                 if zipped:
                     data['path'] = data_dir
         except Exception as e:
-            raise Exception('error/HUB/dataset_stats/yaml_load') from e
+            raise Exception("error/HUB/dataset_stats/yaml_load") from e
 
         check_dataset(data, autodownload)  # download dataset if missing
         self.hub_dir = Path(data['path'] + '-hub')
@@ -1226,7 +1239,7 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
         else:  # read image
             im = cv2.imread(f)  # BGR
         if self.album_transforms:
-            sample = self.album_transforms(image=cv2.cvtColor(im, cv2.COLOR_BGR2RGB))['image']
+            sample = self.album_transforms(image=cv2.cvtColor(im, cv2.COLOR_BGR2RGB))["image"]
         else:
             sample = self.torch_transforms(im)
         return sample, j
