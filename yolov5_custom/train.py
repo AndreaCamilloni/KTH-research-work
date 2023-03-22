@@ -2,6 +2,7 @@
 import argparse
 import math
 import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import random
 import subprocess
 import sys
