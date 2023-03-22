@@ -185,7 +185,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               quad=opt.quad,
                                               prefix=colorstr('train: '),
                                               shuffle=True,
-                                              seed=opt.seed)
+                                              seed=opt.seed,
+                                              weighted_sampler=opt.weighted_sampler)
     labels = np.concatenate(dataset.labels, 0)
     mlc = int(labels[:, 0].max())  # max label class
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
@@ -456,6 +457,7 @@ def parse_opt(known=False):
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     
     parser.add_argument('--weighted-loss', action='store_true',  help='Use weighted loss')
+    parser.add_argument('--weighted-sampler', action='store_true',  help='Use weighted sampler')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
