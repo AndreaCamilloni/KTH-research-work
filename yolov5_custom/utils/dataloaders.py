@@ -139,10 +139,36 @@ def create_dataloader(path,
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
+    
+    # NEW CODE --------------------- start here ----------------------------------------------------
+    # compute the weights for each class
+    class_weights = np.zeros(4)
+    for labels in dataset.labels:
+        for lb in labels:
+            class_weights[int(lb[0])] += 1
+
+    filtered=len(list(filter(lambda item: item.shape[0]>0, dataset.labels)))
+
+    percent = filtered / len(dataset.labels)
+
+    # percent is 0.01 in my case
+
+    weights = [percent if item.shape[0]==0 else 1-percent for item in dataset.labels]
+
+    weights = np.array(weights)
+    
     if weighted_sampler:
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(dataset.weights, batch_size)
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(torch.from_numpy(weights),len(weights))
     else:
         sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
+ 
+    #sampler=WeightedRandomSampler(torch.from_numpy(weights),len(weights))
+
+
+
+    
+        
+    # NEW CODE --------------------- end here ----------------------------------------------------
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + seed + RANK)
@@ -918,6 +944,14 @@ class LoadImagesAndLabels(Dataset):
             lb[:, 0] = i  # add target image index for build_targets()
 
         return torch.stack(im4, 0), torch.cat(label4, 0), path4, shapes4
+    
+    # get labels weights
+    def get_labels_weights(self):
+        self.classes = self.labels[:, 0].astype(np.int32)
+        labels_weights = np.zeros(4)
+        for i in range(4):
+            labels_weights[i] = 1 / (self.labels_count[i] ** 0.5)
+        return labels_weights
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------

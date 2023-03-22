@@ -87,7 +87,7 @@ class QFocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
-# NEW: weighting factor
+# NEW: weighting factor - NOT IMPLEMENTED because it doesn't work with the way the loss is computed
 class WeightedMultilabel(torch.nn.Module):
     def __init__(self,pos_weights, weights):
         super(WeightedMultilabel, self).__init__()
@@ -107,13 +107,14 @@ class ComputeLoss:
         h = model.hyp  # hyperparameters
 
         # WEIGHTED LOSS doesn't work because of the way the loss is computed
-        #if weighted_loss:
-        #    BCEcls = WeightedMultilabel(pos_weight=torch.tensor([h['cls_pw']], device=device), weights=model.class_weights)
-        #    BCEobj = WeightedMultilabel(pos_weight=torch.tensor([h['obj_pw']], device=device), weights=model.class_weights)
-            #BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), weight=model.class_weights)
+        if weighted_loss:
+            #BCEcls = WeightedMultilabel(pos_weight=torch.tensor([h['cls_pw']], device=device), weights=model.class_weights)
+            #BCEobj = WeightedMultilabel(pos_weight=torch.tensor([h['obj_pw']], device=device), weights=model.class_weights)
+            # NOTE: this might be working 
+            BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device), weight=model.class_weights)
             #BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), weight=model.class_weights)
-        #else: 
-        BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))  
+        else: 
+            BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))  
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))  
         
 
