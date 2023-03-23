@@ -52,7 +52,8 @@ class FocalLoss(nn.Module):
         p_t = true * pred_prob + (1 - true) * (1 - pred_prob)
         alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
         modulating_factor = (1.0 - p_t) ** self.gamma
-        loss *= alpha_factor * modulating_factor
+        #loss *= alpha_factor * modulating_factor
+        loss *= modulating_factor # we don't need alpha factor because it's already considered on BCELoss
 
         if self.reduction == 'mean':
             return loss.mean()
@@ -89,13 +90,16 @@ class QFocalLoss(nn.Module):
 
 # NEW: weighting factor - NOT IMPLEMENTED because it doesn't work with the way the loss is computed
 class WeightedMultilabel(torch.nn.Module):
-    def __init__(self,pos_weights, weights):
+    def __init__(self,pos_weight, weights):
         super(WeightedMultilabel, self).__init__()
-        self.loss = nn.BCEWithLogitsLoss(pos_weight=pos_weights, reduction='none')
+        self.loss = nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
         self.weights = weights.unsqueeze(0) 
 
     def forward(self, outputs, targets):
-        return self.loss(outputs, targets) * self.weights
+        print("weights", self.weights)
+        print("outputs", outputs)
+        print("targets", targets)
+        return self.loss(outputs, targets) #* self.weights
     
 
 class ComputeLoss:

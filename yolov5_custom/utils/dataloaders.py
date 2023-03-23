@@ -124,7 +124,7 @@ def create_weighted_sampler(dataset):
 
     weight_background = 1 / background_count if background_count > 0 else 0
 
-    final_weights = []
+    final_weights = [] # Image final weights TODO: double check this with images with and without inflammatory cells
     for label in dataset.labels:
         if label.shape[0] == 0:
             final_weights.append(weight_background)
