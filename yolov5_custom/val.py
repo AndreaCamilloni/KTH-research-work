@@ -184,26 +184,28 @@ def convert2xml(img1, df_img1_labels,img_info):
     
 
 def save_xmls(save_dir, data, task='test'):
+    xmls_dir = os.path.join(save_dir, 'xmls')
+    txts_dir = os.path.join(save_dir, 'txts')
     # Open and Read path test from yaml file 
     with open(data) as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
-    test_path = data[str(task)]
+    task_path = data[str(task)]
     class_names = data['names']
     # Create folder to save xmls
     #save_dir = Path(save_dir)
     #save_dir.mkdir(parents=True, exist_ok=True)
     
     # Read patches_info.csv file in test_path
-    patches_info = pd.read_csv(test_path + '/patches_info.csv')
+    patches_info = pd.read_csv(task_path.split(task)[0] + '/patches_info.csv')
     folder = patches_info['path'].unique()[0].split('\\')[0]
     patches_info = patches_info[patches_info['path'] == folder + f'\\{task}']
     
-    all_labels = read_all_labels(save_dir, patches_info, task)
+    all_labels = read_all_labels(txts_dir, patches_info, task)
 
     for labels in all_labels:
         #print(labels_df[labels_df['name']==labels['name'].iloc[0]].iloc[0])
         xml = convert2xml(labels['name'].iloc[0], labels, patches_info[patches_info['name']==labels['name'].iloc[0]].iloc[0])
-        with open(os.path.join(save_dir, labels['name'].iloc[0].split('.')[0] + '.xml'), 'w') as f:
+        with open(os.path.join(xmls_dir, labels['name'].iloc[0].split('.')[0] + '.xml'), 'w') as f:
             f.write(xml)
 
 
@@ -251,7 +253,7 @@ def run(
         save_hybrid=False,  # save label+prediction hybrid results to *.txt
         save_conf=False,  # save confidences in --save-txt labels
         save_json=False,  # save a COCO-JSON results file
-        save_xml=False,  # save a PASCAL-VOC results file
+        save_xml=False,  #  
         project=ROOT / 'runs/val',  # save to project/name
         name='exp',  # save to project/name
         exist_ok=False,  # existing project/name ok, do not increment
@@ -292,6 +294,7 @@ def run(
                 LOGGER.info(f'Forcing --batch-size 1 square inference (1,3,{imgsz},{imgsz}) for non-PyTorch models')
 
         # Data
+        data_path = data
         data = check_dataset(data)  # check
 
     # Configure
@@ -442,8 +445,8 @@ def run(
         callbacks.run('on_val_end', nt, tp, fp, p, r, f1, ap, ap50, ap_class, confusion_matrix)
     
     if save_xml:
-        xmls_dir = os.path.join(save_dir, 'xmls')
-        save_xmls(xmls_dir, data, task)
+        #xmls_dir = os.path.join(save_dir, 'xmls')
+        save_xmls(save_dir, data_path, task)
     # Save JSON
     if save_json and len(jdict):
         w = Path(weights[0] if isinstance(weights, list) else weights).stem if weights is not None else ''  # weights
