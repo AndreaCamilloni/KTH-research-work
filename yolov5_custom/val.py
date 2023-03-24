@@ -521,6 +521,7 @@ def parse_opt():
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')
     opt.save_txt |= opt.save_hybrid
+    opt.save_txt = True if opt.save_xml else opt.save_txt # if save_xml, save_txt must be True
     print_args(vars(opt))
     return opt
 
