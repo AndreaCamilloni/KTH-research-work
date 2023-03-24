@@ -58,6 +58,7 @@ def save_one_txt(predn, save_conf, shape, file):
             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
 
+
 def save_one_json(predn, jdict, path, class_map):
     # Save one JSON result {"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}
     image_id = int(path.stem) if path.stem.isnumeric() else path.stem
@@ -97,7 +98,7 @@ def convert_to_x_min_y_min_x_max_y_max(labels):
     labels['y_max'] = labels['y_original'] + labels['h_original']/2
     return labels
 
-def read_all_labels(path, labels_df, task):
+def read_all_labels(path, labels_df, task, class_names):
     #labels_csv_path = os.path.join(path, 'patches_info.csv')
     #labels_df = pd.read_csv(labels_csv_path)
     # filter out row with path different from new_data_processed_1\test
@@ -112,8 +113,12 @@ def read_all_labels(path, labels_df, task):
             #label_path = os.path.join('..',row['path'].split('./')[1], 'labels', row['filename'].split('.')[0] + '.txt')
             try:
                 label_path = os.path.join(path, row['filename'].split('.')[0] + '.txt')
+                # Check if file exists
+                if not os.path.exists(label_path):
+                    print('File not found: ', label_path)
+                    continue
                 labels = pd.read_csv(label_path, sep=' ', header=None, names=['class', 'x', 'y', 'w', 'h'])
-                labels = convert_patch_labels_to_original_image_labels(labels, row)
+                labels = convert_patch_labels_to_original_image_labels(labels, row, class_names=)
                 labels = convert_to_x_min_y_min_x_max_y_max(labels)
                 # append the labels to the list with the image name
                 labels['name'] = row['name']
@@ -182,10 +187,12 @@ def convert2xml(img1, df_img1_labels,img_info):
 
 
     
-
+# Function to save xmls compatible with IntelliGraph
 def save_xmls(save_dir, data, task='test'):
+    print('Saving xmls annotations...')
+    print('PLEASE NOTE: The xmls that are being created, will be created with the original image size, not the patch size.')
     xmls_dir = os.path.join(save_dir, 'xmls')
-    txts_dir = os.path.join(save_dir, 'txts')
+    txts_dir = os.path.join(save_dir, 'labels')
     # Open and Read path test from yaml file 
     with open(data) as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
@@ -200,7 +207,7 @@ def save_xmls(save_dir, data, task='test'):
     folder = patches_info['path'].unique()[0].split('\\')[0]
     patches_info = patches_info[patches_info['path'] == folder + f'\\{task}']
     
-    all_labels = read_all_labels(txts_dir, patches_info, task)
+    all_labels = read_all_labels(txts_dir, patches_info, task, class_names)
 
     for labels in all_labels:
         #print(labels_df[labels_df['name']==labels['name'].iloc[0]].iloc[0])
@@ -208,6 +215,7 @@ def save_xmls(save_dir, data, task='test'):
         with open(os.path.join(xmls_dir, labels['name'].iloc[0].split('.')[0] + '.xml'), 'w') as f:
             f.write(xml)
 
+    print('Done! XMLs saved in: ', xmls_dir)
 
 def process_batch(detections, labels, iouv):
     """
@@ -278,7 +286,7 @@ def run(
         # Directories
         save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
         (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
-        (save_dir / 'xml' if save_xml else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        (save_dir / 'xmls' if save_xml else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
         # Load model
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
@@ -444,9 +452,7 @@ def run(
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         callbacks.run('on_val_end', nt, tp, fp, p, r, f1, ap, ap50, ap_class, confusion_matrix)
     
-    if save_xml:
-        #xmls_dir = os.path.join(save_dir, 'xmls')
-        save_xmls(save_dir, data_path, task)
+    
     # Save JSON
     if save_json and len(jdict):
         w = Path(weights[0] if isinstance(weights, list) else weights).stem if weights is not None else ''  # weights
@@ -481,6 +487,8 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
+
+
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 
@@ -554,6 +562,12 @@ def main(opt):
 
 if __name__ == '__main__':
     opt = parse_opt()
+    save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run
     main(opt)
 
+    if opt.save_xml:
+        #xmls_dir = os.path.join(save_dir, 'xmls')
+        #save_dir = Path(opt.project) / opt.name
+        # save dir must be the last generated
+        save_xmls(save_dir, opt.data, opt.task)
 
