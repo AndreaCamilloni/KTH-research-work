@@ -118,7 +118,7 @@ def read_all_labels(path, labels_df, task, class_names):
                     print('File not found: ', label_path)
                     continue
                 labels = pd.read_csv(label_path, sep=' ', header=None, names=['class', 'x', 'y', 'w', 'h'])
-                labels = convert_patch_labels_to_original_image_labels(labels, row, class_names=)
+                labels = convert_patch_labels_to_original_image_labels(labels, row, class_names)
                 labels = convert_to_x_min_y_min_x_max_y_max(labels)
                 # append the labels to the list with the image name
                 labels['name'] = row['name']
