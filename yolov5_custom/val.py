@@ -45,7 +45,8 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, chec
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
-
+import yaml
+import pandas as pd
 
 def save_one_txt(predn, save_conf, shape, file):
     # Save one txt result
@@ -68,6 +69,142 @@ def save_one_json(predn, jdict, path, class_map):
             'category_id': class_map[int(p[5])],
             'bbox': [round(x, 3) for x in b],
             'score': round(p[4], 5)})
+        
+def convert_patch_labels_to_original_image_labels(labels, row,class_names):
+  
+    # De-normalize the coordinates to patch coordinates
+    labels['x_denormalized'] = labels['x'] * (row['xmax'] - row['xmin']) #df_img.iloc[0]['slice']
+    labels['y_denormalized'] = labels['y'] * (row['ymax'] - row['ymin']) #df_img.iloc[0]['slice']
+    labels['w_denormalized'] = labels['w'] * (row['xmax'] - row['xmin']) #df_img.iloc[0]['slice']
+    labels['h_denormalized'] = labels['h'] * (row['ymax'] - row['ymin']) #df_img.iloc[0]['slice']
+    
+    # Convert to original image coordinates
+    labels['x_original'] = labels['x_denormalized'] + row['xmin']
+    labels['y_original'] = labels['y_denormalized'] + row['ymin']
+    labels['w_original'] = labels['w_denormalized']
+    labels['h_original'] = labels['h_denormalized']
+    
+    # Convert labels['class'] to class names
+    labels['class'] = labels['class'].apply(lambda x: class_names[x])    
+
+    return labels
+
+# Convert to x_min, y_min, x_max, y_max
+def convert_to_x_min_y_min_x_max_y_max(labels):
+    labels['x_min'] = labels['x_original'] - labels['w_original']/2
+    labels['y_min'] = labels['y_original'] - labels['h_original']/2
+    labels['x_max'] = labels['x_original'] + labels['w_original']/2
+    labels['y_max'] = labels['y_original'] + labels['h_original']/2
+    return labels
+
+def read_all_labels(path, labels_df, task):
+    #labels_csv_path = os.path.join(path, 'patches_info.csv')
+    #labels_df = pd.read_csv(labels_csv_path)
+    # filter out row with path different from new_data_processed_1\test
+    #labels_df = labels_df[labels_df['path'] == 'new_data_processed_1\\test'] #TODO
+    original_images = labels_df['name'].unique()
+    all_labels = []
+    for img in original_images:
+        df_img = labels_df[labels_df['name'] == img]
+        patches_labels = []
+        for index, row in df_img.iterrows():
+            # Read label file in yolo format
+            #label_path = os.path.join('..',row['path'].split('./')[1], 'labels', row['filename'].split('.')[0] + '.txt')
+            try:
+                label_path = os.path.join(path, row['filename'].split('.')[0] + '.txt')
+                labels = pd.read_csv(label_path, sep=' ', header=None, names=['class', 'x', 'y', 'w', 'h'])
+                labels = convert_patch_labels_to_original_image_labels(labels, row)
+                labels = convert_to_x_min_y_min_x_max_y_max(labels)
+                # append the labels to the list with the image name
+                labels['name'] = row['name']
+                patches_labels.append(labels)
+                #patches_labels.append([labels, row['name']])
+            except:
+                print('Error reading file: ', label_path)
+        try:
+            df_img_labels = pd.concat(patches_labels)
+            all_labels.append(df_img_labels)
+        except:
+            print('Error concatenating patches for image: ', img)
+        
+    return all_labels
+
+from xml.etree.ElementTree import Element, SubElement, Comment, tostring
+from xml.dom import minidom
+
+def convert2xml(img1, df_img1_labels,img_info): 
+
+    annotation = Element('annotation')
+    folder = SubElement(annotation, 'folder')
+    folder.text = 'YOLOv5'
+    filename = SubElement(annotation, 'filename')
+    filename.text = img1
+    path = SubElement(annotation, 'path')
+    path.text = img1
+    source = SubElement(annotation, 'source')
+    database = SubElement(source, 'database')
+    database.text = 'Unknown'
+    size = SubElement(annotation, 'size')
+    width = SubElement(size, 'width')
+    width.text = str(img_info.W)#patches_info[patches_info['name'] == img1]['W'].values[0]
+    height = SubElement(size, 'height')
+    height.text = str(img_info.H)#patches_info[patches_info['name'] == img1]['H'].values[0]
+    depth = SubElement(size, 'depth')
+    depth.text = str(3)
+    segmented = SubElement(annotation, 'segmented')
+    segmented.text = str(0)
+
+    for index, row in df_img1_labels.iterrows():
+        object = SubElement(annotation, 'object')
+        name = SubElement(object, 'name')
+        name.text = str(row['class'])
+        pose = SubElement(object, 'pose')
+        pose.text = 'Unspecified'
+        truncated = SubElement(object, 'truncated')
+        truncated.text = str(0)
+        difficult = SubElement(object, 'difficult')
+        difficult.text = str(0)
+        bndbox = SubElement(object, 'bndbox')
+        xmin = SubElement(bndbox, 'xmin')
+        xmin.text = str(int(row['x_min']))
+        ymin = SubElement(bndbox, 'ymin')
+        ymin.text = str(int(row['y_min']))
+        xmax = SubElement(bndbox, 'xmax')
+        xmax.text = str(int(row['x_max']))
+        ymax = SubElement(bndbox, 'ymax')
+        ymax.text = str(int(row['y_max']))
+
+
+    rough_string = tostring(annotation, 'utf-8')
+    reparsed = minidom.parseString(rough_string)
+    xml = reparsed.toprettyxml(indent="  ")
+    return xml
+
+
+    
+
+def save_xmls(save_dir, data, task='test'):
+    # Open and Read path test from yaml file 
+    with open(data) as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
+    test_path = data[str(task)]
+    class_names = data['names']
+    # Create folder to save xmls
+    #save_dir = Path(save_dir)
+    #save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Read patches_info.csv file in test_path
+    patches_info = pd.read_csv(test_path + '/patches_info.csv')
+    folder = patches_info['path'].unique()[0].split('\\')[0]
+    patches_info = patches_info[patches_info['path'] == folder + f'\\{task}']
+    
+    all_labels = read_all_labels(save_dir, patches_info, task)
+
+    for labels in all_labels:
+        #print(labels_df[labels_df['name']==labels['name'].iloc[0]].iloc[0])
+        xml = convert2xml(labels['name'].iloc[0], labels, patches_info[patches_info['name']==labels['name'].iloc[0]].iloc[0])
+        with open(os.path.join(save_dir, labels['name'].iloc[0].split('.')[0] + '.xml'), 'w') as f:
+            f.write(xml)
 
 
 def process_batch(detections, labels, iouv):
@@ -114,6 +251,7 @@ def run(
         save_hybrid=False,  # save label+prediction hybrid results to *.txt
         save_conf=False,  # save confidences in --save-txt labels
         save_json=False,  # save a COCO-JSON results file
+        save_xml=False,  # save a PASCAL-VOC results file
         project=ROOT / 'runs/val',  # save to project/name
         name='exp',  # save to project/name
         exist_ok=False,  # existing project/name ok, do not increment
@@ -138,6 +276,7 @@ def run(
         # Directories
         save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
         (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        (save_dir / 'xml' if save_xml else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
         # Load model
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
@@ -261,7 +400,9 @@ def run(
                 save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
             if save_json:
                 save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
+            
             callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
+            #TODO save xml
 
         # Plot images
         if plots and batch_i < 3:
@@ -299,7 +440,10 @@ def run(
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         callbacks.run('on_val_end', nt, tp, fp, p, r, f1, ap, ap50, ap_class, confusion_matrix)
-
+    
+    if save_xml:
+        xmls_dir = os.path.join(save_dir, 'xmls')
+        save_xmls(xmls_dir, data, task)
     # Save JSON
     if save_json and len(jdict):
         w = Path(weights[0] if isinstance(weights, list) else weights).stem if weights is not None else ''  # weights
@@ -353,6 +497,7 @@ def parse_opt():
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--verbose', action='store_true', help='report mAP by class')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+    parser.add_argument('--save-xml', action='store_true', help='save results to *.xml')
     parser.add_argument('--save-hybrid', action='store_true', help='save label+prediction hybrid results to *.txt')
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
     parser.add_argument('--save-json', action='store_true', help='save a COCO-JSON results file')
@@ -407,3 +552,5 @@ def main(opt):
 if __name__ == '__main__':
     opt = parse_opt()
     main(opt)
+
+
