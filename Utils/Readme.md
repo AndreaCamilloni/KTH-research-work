@@ -12,3 +12,10 @@ How to use it (EXAMPLE):
 Class used to restore XML annotations from YOLO predicted labels.
 
         python convert2xml.py 
+
+
+## Json2xml
+
+Method used to convert ground truth json annotations to XML annotations.
+
+        python json2xml.py --json-path 'path to json folder' --xml-path 'path where to save xml annotations' 
