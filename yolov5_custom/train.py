@@ -187,7 +187,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               shuffle=True,
                                               seed=opt.seed,
                                               training = True, 
-                                              weighted_sampler=opt.weighted_sampler)
+                                              weighted_sampler=opt.weighted_sampler,
+                                              increase_dataset_size = opt.increase_dataset_size)
     labels = np.concatenate(dataset.labels, 0)
     mlc = int(labels[:, 0].max())  # max label class
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
@@ -459,6 +460,7 @@ def parse_opt(known=False):
     
     parser.add_argument('--weighted-loss', action='store_true',  help='Use weighted loss')
     parser.add_argument('--weighted-sampler', action='store_true',  help='Use weighted sampler')
+    parser.add_argument('--increase-dataset-size', action='store_true',  help='Increase data size using both original and augmented data')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

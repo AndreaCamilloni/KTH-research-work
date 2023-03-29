@@ -160,11 +160,13 @@ def create_dataloader(path,
                       shuffle=False,
                       training = False,
                       seed = 0,
-                      weighted_sampler=False):
+                      weighted_sampler=False,
+                      increase_dataset_size=False):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+        print("Loading images and labels")
         dataset = LoadImagesAndLabels(
             path,
             imgsz,
@@ -178,6 +180,27 @@ def create_dataloader(path,
             pad=pad,
             image_weights=image_weights,
             prefix=prefix)
+        
+        if training and increase_dataset_size and augment:
+            print("Loading images and labels no augmentation dataset")
+            dataset_noaug = LoadImagesAndLabels(
+            path,
+            imgsz,
+            batch_size,
+            augment=False,  # augmentation
+            hyp=hyp,  # hyperparameters
+            rect=rect,  # rectangular batches
+            cache_images=cache,
+            single_cls=single_cls,
+            stride=int(stride),
+            pad=pad,
+            image_weights=image_weights,
+            prefix=prefix)
+
+    # concatenate datasets
+    if training and increase_dataset_size and augment:
+        print("Concatenating datasets")
+        dataset = torch.utils.data.ConcatDataset([dataset, dataset_noaug])
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
