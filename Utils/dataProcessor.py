@@ -465,10 +465,11 @@ class DataProcessor:
         print("Class to number mapping:", self.class_to_num)
         print("Number of patches:", len(self.patches_info))
 
+        self.data['filename_'] = self.data['filename'].apply(lambda x: x.split('.')[0])
         # get the class distribution for each set
-        train_data = self.data[self.data['filename'].split('.')[0].isin(self.train_imgs)]
-        val_data = self.data[self.data['filename'].split('.')[0].isin(self.val_imgs)]
-        test_data = self.data[self.data['filename'].split('.')[0].isin(self.test_imgs)]
+        train_data = self.data[self.data['filename_'].isin(self.train_imgs)]
+        val_data = self.data[self.data['filename_'].isin(self.val_imgs)]
+        test_data = self.data[self.data['filename_'].isin(self.test_imgs)]
 
         print("\nTrain set class distribution:", train_data['class'].value_counts())
         print("\nVal set class distribution:", val_data['class'].value_counts())
