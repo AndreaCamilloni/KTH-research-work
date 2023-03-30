@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import argparse
 from xml.etree.ElementTree import Element, SubElement, Comment, tostring
@@ -16,8 +17,29 @@ def convert_coords(df):
     
     return df
 
+def convert_coords(df):
+    width, height = 16, 16
+    df['xmin'] = df['x'] - width/2
+    df['ymin'] = df['y'] - height/2
+    df['xmax'] = df['x'] + width/2
+    df['ymax'] = df['y'] + height/2
+
+    df['class'] = df['groundTruthType']
+    
+    return df
+
+
+# Remove date from file name
+def name_preprocess(filename):
+    new_name = re.sub(r'_\d{8}', '', filename)
+    new_name = re.sub(r'_\d{6}', '', new_name)
+    new_name = re.sub(r'_HA|_TBC', '', new_name)
+    return new_name
+ 
 
 def convert2xml(image_name, data,img_size = (2000, 2000)): 
+
+    image_name = name_preprocess(image_name)
 
     annotation = Element('annotation')
     folder = SubElement(annotation, 'folder')
@@ -91,7 +113,7 @@ def main():
                 df = convert_coords(df)
                 tile_name = json_file.split('.')[0]
                 xml = convert2xml(tile_name, df)
-                xml_file_path = os.path.join(xml_path, tile_name + '.xml')
+                xml_file_path = os.path.join(xml_path, name_preprocess(tile_name) + '_gt_natural_dense' + '.xml')
                 with open(xml_file_path, 'w') as f:
                     f.write(xml)
 
