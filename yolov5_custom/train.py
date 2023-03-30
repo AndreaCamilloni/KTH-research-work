@@ -348,7 +348,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 save_dir=save_dir,
                                                 plots=False,
                                                 callbacks=callbacks,
-                                                compute_loss=compute_loss)
+                                                compute_loss=compute_loss,
+                                                iou_thres=opt.iou_val,
+                                                conf_thres=opt.conf_val,
+                                                max_det=opt.max_det_val)
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
@@ -411,7 +414,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                         verbose=True,
                         plots=plots,
                         callbacks=callbacks,
-                        compute_loss=compute_loss)  # val best model with plots
+                        compute_loss=compute_loss,
+                        iou_thres=opt.iou_val,
+                        conf_thres=opt.conf_val,
+                        max_det=opt.max_det_val                        
+                        )  # val best model with plots
                     if is_coco:
                         callbacks.run('on_fit_epoch_end', list(mloss) + list(results) + lr, epoch, best_fitness, fi)
 
@@ -457,7 +464,13 @@ def parse_opt(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
+
+    # Validation arguments
+    parser.add_argument('--iou-val', type=float, default=0.6, help='IoU threshold for validation')
+    parser.add_argument('--conf-val', type=float, default=0.4, help='Confidence threshold for validation')
+    parser.add_argument('--max-det-val', type=int, default=500, help='Maximum number of detections for validation')
     
+    # Unbalanced dataset arguments 
     parser.add_argument('--weighted-loss', action='store_true',  help='Use weighted loss')
     parser.add_argument('--weighted-sampler', action='store_true',  help='Use weighted sampler')
     parser.add_argument('--increase-dataset-size', action='store_true',  help='Increase data size using both original and augmented data')
