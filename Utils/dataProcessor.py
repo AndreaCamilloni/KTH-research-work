@@ -398,7 +398,8 @@ class DataProcessor:
             wobj.write("\n")
             wobj.write('nc: ' + str(len(self.data['class'].unique())))
             wobj.write("\n")
-            wobj.write('names: ' + str(list(self.data['class'].unique())))
+            #wobj.write('names: ' + str(list(self.data['class'].unique()))) WTF is this? HUGE ERROR
+            wobj.write('names: ' + str(list(self.classes)))
             wobj.write("\n")
 
         wobj.close()
@@ -529,5 +530,6 @@ if __name__ == "__main__":
     dataset = DataProcessor(path, destination, slice_size, slicing, val_split, train_imgs, val_imgs, test_imgs)
 
     dataset.populate_train_val_test()
+    dataset.get_insights()
 
 
