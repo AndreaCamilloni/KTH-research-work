@@ -451,6 +451,29 @@ class DataProcessor:
         # Create data.yaml
         self.create_yaml()
 
+    def get_insights(self):
+        # Get insights about the dataset
+        print("\nDataset insights:\n")
+        print("Number of images:", len(self.data['filename'].unique()))
+        print("Number of classes:", len(self.data['class'].unique()))
+        print("Number of bounding boxes:", len(self.data))
+        print("Number of train images:", len(self.train_imgs))
+        print("Number of val images:", len(self.val_imgs))
+        print("Number of test images:", len(self.test_imgs))
+        print("Classes:", self.data['class'].unique())
+        print("Class distribution:", self.data['class'].value_counts())
+        print("Class to number mapping:", self.class_to_num)
+        print("Number of patches:", len(self.patches_info))
+
+        # get the class distribution for each set
+        train_data = self.data[self.data['filename'].split('.')[0].isin(self.train_imgs)]
+        val_data = self.data[self.data['filename'].split('.')[0].isin(self.val_imgs)]
+        test_data = self.data[self.data['filename'].split('.')[0].isin(self.test_imgs)]
+
+        print("\nTrain set class distribution:", train_data['class'].value_counts())
+        print("\nVal set class distribution:", val_data['class'].value_counts())
+        print("\nTest set class distribution:", test_data['class'].value_counts())
+
 
 
 
@@ -462,11 +485,11 @@ if __name__ == "__main__":
     my_parser.add_argument('--path',
                            type=str,
                            help='the path to the folder containing the xml files',
-                           default='./dataset_demo')
+                           default='../full_dataset')
     my_parser.add_argument('--destination',
                            type=str,
                            help='the path to the destination folder',
-                           default='./processed_data')
+                           default='../full_dataset')
     my_parser.add_argument('--slice-size',
                            type=int,
                            help='the size of the patches',
