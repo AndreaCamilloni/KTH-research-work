@@ -1,3 +1,6 @@
 [submodule "yolov5"]
 	path = yolov5
 	url = https://github.com/ultralytics/yolov5
+[submodule "StainTools"]
+	path = StainTools
+	url = https://github.com/Peter554/StainTools.git
