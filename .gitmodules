@@ -4,3 +4,6 @@
 [submodule "StainTools"]
 	path = StainTools
 	url = https://github.com/Peter554/StainTools.git
+[submodule "HistAuGAN"]
+	path = HistAuGAN
+	url = https://github.com/AndreaCamilloni/HistAuGAN.git
