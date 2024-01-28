@@ -1,0 +1,9 @@
+{
+    "dataset_path": "CrowdsourcingDataset-Amgadetal2019",
+    "xml_path": "xml_yolov8s_main_iou=0.2_conf=0.1_agnosticNMS_full_size/tiles/",
+    "img_path": "/images/tiles/",
+    "mask_path": "/masks/tiles/",
+    "cell_class_type": "superclass",
+    "output_path": "output/tiles/",
+    "name_exp": "bcss_delaunay_graph_yolov8s_main_class/"
+}
